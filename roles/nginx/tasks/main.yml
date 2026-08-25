@@ -1,0 +1,26 @@
+---
+
+- name: Instalar o Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+
+- name: Enviar arquivo de configuracao do site
+  ansible.builtin.template:
+    src: meu_site.conf.j2
+    dest: /etc/nginx/sites-available/meu_site.conf
+  notify: Reiniciar Nginx
+
+- name: Ativar o site (criar link simbolico)
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/meu_site.conf
+    dest: /etc/nginx/sites-enabled/meu_site.conf
+    state: link
+  notify: Reiniciar Nginx
+
+- name: Garantir que o Nginx esta rodando e habilitado no boot
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true

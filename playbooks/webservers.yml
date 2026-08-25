@@ -1,0 +1,8 @@
+---
+
+- name: Configurar Servidores Frontend
+  hosts: webservers 
+  become: true     
+
+  roles:
+    - nginx

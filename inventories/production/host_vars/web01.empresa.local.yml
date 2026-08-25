@@ -1,0 +1,5 @@
+---
+# Variaveis aplicadas apenas ao servidor web01
+ansible_host: 192.168.1.10
+server_id: 1
+has_backup_enabled: true

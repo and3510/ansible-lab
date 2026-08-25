@@ -1,0 +1,5 @@
+---
+# Variaveis aplicadas para todos os servidores do grupo [webservers]
+nginx_port: 80
+php_version: "8.1"
+app_environment: "production"
