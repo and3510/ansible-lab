@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+node-name: {{ k3s_node_name }}
+node-ip: {{ k3s_node_ip }}
+advertise-address: {{ k3s_node_ip }}
+tls-san:
+  - {{ k3s_node_ip }}
+  - {{ inventory_hostname }}
+write-kubeconfig-mode: "0600"
+{% if k3s_token is defined %}
+token: {{ k3s_token }}
+{% endif %}
+{% if k3s_disable | length > 0 %}
+disable:
+{% for component in k3s_disable %}
+  - {{ component }}
+{% endfor %}
+{% endif %}
+{% if k3s_server_extra_config | length > 0 %}
+{{ k3s_server_extra_config | to_nice_yaml }}
+{% endif %}

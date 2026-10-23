@@ -1,0 +1,32 @@
+---
+# Versao fixa = clusters reprodutiveis. Lista: https://github.com/k3s-io/k3s/releases
+k3s_version: v1.31.4+k3s1
+
+k3s_server_group: k3s_server
+k3s_agent_group: k3s_agent
+k3s_api_port: 6443
+
+# Primeiro host do grupo server. Agents se registram nele.
+k3s_primary_server: "{{ groups[k3s_server_group] | first }}"
+k3s_server_url: "https://{{ hostvars[k3s_primary_server].k3s_node_ip | default(hostvars[k3s_primary_server].ansible_host) }}:{{ k3s_api_port }}"
+
+# Nome do node no cluster (padrao do k3s: o hostname da maquina).
+k3s_node_name: "{{ ansible_hostname }}"
+
+# IP anunciado pelo no (util quando ha mais de uma interface de rede).
+k3s_node_ip: "{{ ansible_default_ipv4.address }}"
+
+# Token do cluster. Se nao for definido (ex.: via ansible-vault), o token
+# gerado pelo proprio server e lido e repassado aos agents em tempo de execucao.
+# k3s_token: ""
+
+# Componentes embutidos a desabilitar (ex.: traefik, servicelb).
+k3s_disable: []
+
+# Opcoes extras para /etc/rancher/k3s/config.yaml
+k3s_server_extra_config: {}
+k3s_agent_extra_config: {}
+
+# Copia o kubeconfig do cluster para a maquina de controle.
+k3s_fetch_kubeconfig: true
+k3s_kubeconfig_local_path: "{{ playbook_dir }}/../artifacts/kubeconfig-{{ k3s_primary_server }}.yaml"

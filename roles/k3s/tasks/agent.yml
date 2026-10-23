@@ -1,0 +1,21 @@
+---
+- name: Gerar configuracao do agent
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Reiniciar k3s-agent
+
+- name: Instalar k3s agent
+  ansible.builtin.command: /usr/local/bin/k3s-install.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: agent
+  args:
+    creates: /usr/local/bin/k3s
+  # O instalador bloqueia ate o servico ficar pronto; sem limite, um node
+  # que nao consegue entrar no cluster trava o playbook para sempre.
+  timeout: 300

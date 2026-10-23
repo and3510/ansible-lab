@@ -1,0 +1,86 @@
+---
+# Atualizacao rolling: um host por vez, drenando nos do k3s antes e
+# reiniciando somente quando o sistema exige.
+#   ansible-playbook playbooks/update.yml
+#   ansible-playbook playbooks/update.yml -l k3s_agent -e update_serial=2
+- name: Atualizar servidores (rolling)
+  hosts: all
+  become: true
+  serial: "{{ update_serial | default(1) }}"
+  # Qualquer falha interrompe o rollout antes de atingir o proximo lote.
+  max_fail_percentage: 0
+  vars:
+    update_upgrade_type: dist
+    update_allow_reboot: true
+    update_is_k3s_node: "{{ 'k3s_cluster' in group_names }}"
+    update_k3s_api_host: "{{ groups['k3s_server'] | default([]) | first }}"
+    update_k3s_node: "{{ k3s_node_name | default(ansible_hostname) }}"
+
+  tasks:
+    - name: Atualizar cache do apt
+      ansible.builtin.apt:
+        update_cache: true
+      changed_when: false
+
+    - name: Verificar pacotes pendentes
+      ansible.builtin.apt:
+        upgrade: "{{ update_upgrade_type }}"
+      check_mode: true
+      register: update_pending
+
+    - name: Verificar se ja existe reboot pendente
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: update_reboot_before
+
+    - name: Aplicar atualizacoes
+      when: update_pending.changed or update_reboot_before.stat.exists
+      block:
+        - name: Drenar no do k3s
+          ansible.builtin.command: >-
+            k3s kubectl drain {{ update_k3s_node }}
+            --ignore-daemonsets --delete-emptydir-data --timeout=300s
+          delegate_to: "{{ update_k3s_api_host }}"
+          changed_when: true
+          when: update_is_k3s_node | bool
+
+        - name: Atualizar pacotes
+          ansible.builtin.apt:
+            upgrade: "{{ update_upgrade_type }}"
+            autoremove: true
+            autoclean: true
+
+        - name: Verificar se o reboot e necessario
+          ansible.builtin.stat:
+            path: /var/run/reboot-required
+          register: update_reboot_after
+
+        - name: Reiniciar host
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+            msg: Reboot agendado pelo Ansible apos atualizacao
+          when:
+            - update_reboot_after.stat.exists
+            - update_allow_reboot | bool
+            # Conteiner compartilha o kernel do host: nao ha o que reiniciar.
+            - ansible_virtualization_type not in ['docker', 'podman', 'container']
+
+        # Se algo acima falhar, o no fica em cordon de proposito: melhor
+        # fora do cluster do que recebendo pods em estado desconhecido.
+        - name: Aguardar no do k3s ficar Ready
+          ansible.builtin.command: >-
+            k3s kubectl wait node {{ update_k3s_node }}
+            --for=condition=Ready --timeout=30s
+          delegate_to: "{{ update_k3s_api_host }}"
+          register: update_node_ready
+          until: update_node_ready.rc == 0
+          retries: 20
+          delay: 15
+          changed_when: false
+          when: update_is_k3s_node | bool
+
+        - name: Devolver no ao cluster
+          ansible.builtin.command: k3s kubectl uncordon {{ update_k3s_node }}
+          delegate_to: "{{ update_k3s_api_host }}"
+          changed_when: true
+          when: update_is_k3s_node | bool

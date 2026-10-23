@@ -1,0 +1,20 @@
+---
+# Inventario dinamico: descobre os conteineres do lab pelo label "lab.role"
+# (ver lab/compose.yml). Escalar com "make lab-up AGENTS=3" nao exige editar
+# nada aqui. Mesmo conceito dos plugins aws_ec2 / azure_rm em nuvem.
+plugin: community.docker.docker_containers
+connection_type: docker-cli
+verbose_output: true
+filters:
+  - include: "'lab.role' in docker_config.Labels"
+  - exclude: true
+groups:
+  webservers: docker_config.Labels['lab.role'] == 'web'
+  docker_hosts: docker_config.Labels['lab.role'] == 'web'
+  k3s_cluster: docker_config.Labels['lab.role'].startswith('k3s')
+  k3s_server: docker_config.Labels['lab.role'] == 'k3s-server'
+  k3s_agent: docker_config.Labels['lab.role'] == 'k3s-agent'
+compose:
+  k3s_node_ip: docker_networksettings.Networks['lab_lab'].IPAddress
+  k3s_node_name: docker_name | regex_replace('^/', '')
+  healthcheck_http_host: docker_networksettings.Networks['lab_lab'].IPAddress

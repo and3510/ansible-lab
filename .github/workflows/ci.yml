@@ -1,0 +1,60 @@
+---
+name: ci
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar ferramentas
+        run: pip install ansible-lint yamllint
+
+      - name: Instalar collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Lint
+        run: make lint
+
+      - name: Syntax check
+        run: ansible-playbook playbooks/site.yml --syntax-check
+
+  e2e:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Ansible
+        run: |
+          pip install ansible-core requests
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Ajustar limite de inotify do host
+        run: sudo sysctl -w fs.inotify.max_user_instances=512
+
+      - name: Subir lab em conteiner
+        run: make lab-up
+
+      - name: Provisionar, validar idempotencia e saude
+        run: make test
+
+      - name: Testar atualizacao rolling
+        run: make update
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose -f lab/compose.yml logs --tail=100

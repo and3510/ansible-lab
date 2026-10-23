@@ -1,25 +1,54 @@
 ---
-
 - name: Instalar o Nginx
   ansible.builtin.apt:
     name: nginx
     state: present
     update_cache: true
+    cache_valid_time: 3600
 
-- name: Enviar arquivo de configuracao do site
-  ansible.builtin.template:
-    src: meu_site.conf.j2
-    dest: /etc/nginx/sites-available/meu_site.conf
-  notify: Reiniciar Nginx
-
-- name: Ativar o site (criar link simbolico)
+- name: Criar diretorio raiz do site
   ansible.builtin.file:
-    src: /etc/nginx/sites-available/meu_site.conf
-    dest: /etc/nginx/sites-enabled/meu_site.conf
-    state: link
-  notify: Reiniciar Nginx
+    path: "{{ nginx_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+  when: nginx_proxy_pass | length == 0
 
-- name: Garantir que o Nginx esta rodando e habilitado no boot
+- name: Publicar pagina inicial
+  ansible.builtin.copy:
+    dest: "{{ nginx_root }}/index.html"
+    content: "<h1>{{ inventory_hostname }}</h1><p>Provisionado com Ansible</p>\n"
+    owner: www-data
+    group: www-data
+    mode: "0644"
+    force: false
+  when: nginx_proxy_pass | length == 0
+
+- name: Enviar configuracao do site
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: "/etc/nginx/sites-available/{{ nginx_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Recarregar Nginx
+
+- name: Ativar o site
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ nginx_site_name }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ nginx_site_name }}.conf"
+    state: link
+  notify: Recarregar Nginx
+
+- name: Remover site default
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: nginx_remove_default_site | bool
+  notify: Recarregar Nginx
+
+- name: Garantir Nginx iniciado e habilitado no boot
   ansible.builtin.systemd:
     name: nginx
     state: started

@@ -1,0 +1,80 @@
+---
+# Laboratorio local SEM maquina virtual: cada servico e um "servidor" com systemd.
+# Cada profile e um laboratorio que pode ser ligado sozinho, e os agents do
+# k3s escalam sob demanda:
+#   make lab-up                    # todos, com 1 agent
+#   make lab-up LAB=k3s AGENTS=3   # so o cluster, com 3 agents
+#   make lab-up LAB=web            # so o servidor web
+#
+# O label "lab.role" e o que o inventario dinamico usa para montar os grupos.
+name: lab
+
+x-server: &server
+  build: .
+  image: ansible-lab-server:24.04
+  privileged: true          # necessario para Docker e k3s dentro do conteiner
+  tmpfs:
+    - /run
+    - /run/lock
+  restart: unless-stopped
+
+services:
+  web01:
+    <<: *server
+    profiles: [web]
+    container_name: web01
+    hostname: web01
+    labels:
+      lab.role: web
+    networks:
+      lab:
+        ipv4_address: 172.30.56.10
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      - web01-docker:/var/lib/docker   # overlayfs nao funciona sobre overlayfs
+
+  k3s-server01:
+    <<: *server
+    profiles: [k3s]
+    container_name: k3s-server01
+    hostname: k3s-server01
+    labels:
+      lab.role: k3s-server
+    networks:
+      lab:
+        ipv4_address: 172.30.56.11   # fixo: os agents apontam para ele
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      - k3s-server01-rancher:/var/lib/rancher
+      - k3s-server01-kubelet:/var/lib/kubelet
+      - k3s-server01-etc:/etc/rancher        # identidade do node sobrevive a recriacao
+
+  # Escalavel: cada replica vira um node (lab-k3s-agent-1, lab-k3s-agent-2...)
+  k3s-agent:
+    <<: *server
+    profiles: [k3s]
+    labels:
+      lab.role: k3s-agent
+    networks:
+      - lab
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      # Volumes anonimos (um conjunto por replica), preservados se o conteiner
+      # for recriado: sem /etc/rancher o node volta com senha nova e o server
+      # o rejeita como "duplicate hostname".
+      - /var/lib/rancher
+      - /var/lib/kubelet
+      - /etc/rancher
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.30.56.0/24
+          ip_range: 172.30.56.128/25     # IPs dinamicos longe dos fixos
+
+volumes:
+  web01-docker:
+  k3s-server01-rancher:
+  k3s-server01-kubelet:
+  k3s-server01-etc:

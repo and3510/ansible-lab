@@ -1,0 +1,69 @@
+---
+- name: Atualizar cache do apt e instalar pacotes base
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Definir timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Habilitar atualizacoes automaticas de seguranca
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Liberar sudo sem senha para usuarios administradores
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ item }}"
+    content: "{{ item }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+  loop: "{{ common_admin_users }}"
+
+- name: Aplicar hardening do SSH
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    content: |
+      # Gerenciado pelo Ansible
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      MaxAuthTries 3
+    owner: root
+    group: root
+    mode: "0644"
+    validate: sshd -t -f %s
+  when: common_ssh_hardening | bool
+  notify: Recarregar SSH
+
+- name: Configurar firewall
+  when: common_firewall_enabled | bool
+  block:
+    - name: Instalar UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Liberar portas TCP
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ common_firewall_allowed_tcp_ports }}"
+
+    - name: Ativar UFW negando entrada por padrao
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming

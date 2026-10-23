@@ -1,6 +1,12 @@
 ---
+# Valida a configuracao antes do reload: uma config quebrada falha o
+# playbook em vez de derrubar o servico.
+- name: Recarregar Nginx
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  notify: Executar reload do Nginx
 
-- name: Reiniciar Nginx
+- name: Executar reload do Nginx
   ansible.builtin.systemd:
     name: nginx
-    state: restarted
+    state: reloaded

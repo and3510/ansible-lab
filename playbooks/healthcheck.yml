@@ -1,0 +1,128 @@
+---
+# Verificacao de saude somente leitura: nao altera nada nos hosts.
+# Coleta todos os problemas e falha no final com um resumo consolidado.
+#   ansible-playbook playbooks/healthcheck.yml
+#   ansible-playbook playbooks/healthcheck.yml -l webservers
+- name: Verificar saude dos servidores
+  hosts: all
+  become: true
+  vars:
+    healthcheck_disk_max_percent: 85
+    healthcheck_mem_min_free_mb: 200
+    healthcheck_ignored_fstypes: [squashfs, tmpfs, overlay, vfat]
+    healthcheck_services_by_group:
+      all: [ssh]
+      docker_hosts: [docker]
+      webservers: [nginx]
+      k3s_server: [k3s]
+      k3s_agent: [k3s-agent]
+
+  tasks:
+    - name: Coletar estado dos servicos
+      ansible.builtin.service_facts:
+
+    - name: Verificar reboot pendente
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: healthcheck_reboot
+
+    - name: Contar atualizacoes pendentes
+      ansible.builtin.shell: set -o pipefail && apt-get -s upgrade | grep -c '^Inst' || true
+      args:
+        executable: /bin/bash
+      register: healthcheck_updates
+      changed_when: false
+      check_mode: false
+
+    - name: Testar resposta HTTP
+      ansible.builtin.uri:
+        url: "http://{{ healthcheck_http_host | default(ansible_host) }}:{{ nginx_port | default(80) }}/"
+        status_code: 200
+        timeout: 5
+      register: healthcheck_http
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      when: "'webservers' in group_names"
+
+    - name: Listar nos do k3s fora de Ready
+      ansible.builtin.shell: >-
+        set -o pipefail &&
+        k3s kubectl get nodes --no-headers | awk '$2 != "Ready" {print $1 " (" $2 ")"}'
+      args:
+        executable: /bin/bash
+      register: healthcheck_k3s_nodes
+      changed_when: false
+      check_mode: false
+      failed_when: healthcheck_k3s_nodes.rc != 0
+      when: "'k3s_server' in group_names"
+
+    - name: Listar pods com problema
+      ansible.builtin.command: >-
+        k3s kubectl get pods -A --no-headers
+        --field-selector=status.phase!=Running,status.phase!=Succeeded
+        -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase
+      register: healthcheck_k3s_pods
+      changed_when: false
+      check_mode: false
+      when: "'k3s_server' in group_names"
+
+    - name: Consolidar problemas do host
+      ansible.builtin.set_fact:
+        healthcheck_problems: >-
+          {%- set out = [] -%}
+          {%- set running = ansible_facts.services | dict2items
+                | selectattr('value.state', 'equalto', 'running')
+                | map(attribute='key') | list -%}
+          {%- set expected = healthcheck_services_by_group | dict2items
+                | selectattr('key', 'in', group_names + ['all'])
+                | map(attribute='value') | flatten | unique -%}
+          {%- for svc in expected if (svc ~ '.service') not in running -%}
+          {%- set _ = out.append('servico parado: ' ~ svc) -%}
+          {%- endfor -%}
+          {%- for m in ansible_mounts if m.size_total > 0 and m.fstype not in healthcheck_ignored_fstypes -%}
+          {%- set pct = ((1 - m.size_available / m.size_total) * 100) | round(1) -%}
+          {%- if pct > healthcheck_disk_max_percent -%}
+          {%- set _ = out.append('disco ' ~ m.mount ~ ' em ' ~ pct ~ '%') -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {%- if ansible_memory_mb.nocache.free < healthcheck_mem_min_free_mb -%}
+          {%- set _ = out.append('memoria livre baixa: ' ~ ansible_memory_mb.nocache.free ~ ' MB') -%}
+          {%- endif -%}
+          {%- if healthcheck_reboot.stat.exists -%}
+          {%- set _ = out.append('reboot pendente') -%}
+          {%- endif -%}
+          {%- if healthcheck_http.status is defined and healthcheck_http.status != 200 -%}
+          {%- set _ = out.append('HTTP respondeu ' ~ healthcheck_http.status) -%}
+          {%- endif -%}
+          {%- for line in healthcheck_k3s_nodes.stdout_lines | default([]) -%}
+          {%- set _ = out.append('no k3s nao Ready: ' ~ line) -%}
+          {%- endfor -%}
+          {%- for line in healthcheck_k3s_pods.stdout_lines | default([]) -%}
+          {%- set _ = out.append('pod com problema: ' ~ line | regex_replace('\s+', ' ')) -%}
+          {%- endfor -%}
+          {{ out }}
+        healthcheck_pending_updates: "{{ healthcheck_updates.stdout | int }}"
+
+    - name: Exibir resumo
+      ansible.builtin.debug:
+        msg: >-
+          {%- set report = {} -%}
+          {%- for h in ansible_play_hosts_all -%}
+          {%- set hv = hostvars[h] -%}
+          {%- set _ = report.update({h: {
+                'status': 'OK' if (hv.healthcheck_problems | default(['x'])) | length == 0 else 'FALHA',
+                'atualizacoes_pendentes': hv.healthcheck_pending_updates | default(-1) | int,
+                'problemas': hv.healthcheck_problems | default(['host inacessivel ou falhou na coleta'])
+              }}) -%}
+          {%- endfor -%}
+          {{ report }}
+      run_once: true
+
+    - name: Falhar se algum host tiver problemas
+      ansible.builtin.assert:
+        that: (hostvars[item].healthcheck_problems | default(['x'])) | length == 0
+        fail_msg: "{{ item }}: {{ hostvars[item].healthcheck_problems | default(['host inacessivel']) | join('; ') }}"
+        quiet: true
+      loop: "{{ ansible_play_hosts_all }}"
+      run_once: true

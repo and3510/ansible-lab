@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+server: {{ k3s_server_url }}
+{% if k3s_token is defined %}
+token: {{ k3s_token }}
+{% else %}
+token: {{ hostvars[k3s_primary_server].k3s_generated_token }}
+{% endif %}
+node-name: {{ k3s_node_name }}
+node-ip: {{ k3s_node_ip }}
+{% if k3s_agent_extra_config | length > 0 %}
+{{ k3s_agent_extra_config | to_nice_yaml }}
+{% endif %}

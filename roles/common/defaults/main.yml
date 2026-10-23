@@ -1,0 +1,23 @@
+---
+common_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - htop
+  - vim
+  - git
+  - unattended-upgrades
+
+common_timezone: UTC
+
+# Usuarios que recebem a chave publica e sudo sem senha.
+common_admin_users: []
+
+# Hardening do SSH: desliga login de root e autenticacao por senha.
+# Garanta acesso por chave ANTES de ativar em hosts novos.
+common_ssh_hardening: true
+
+# Firewall (UFW): desligado por padrao para nao quebrar roles que abrem portas.
+common_firewall_enabled: false
+common_firewall_allowed_tcp_ports:
+  - 22

@@ -1,0 +1,6 @@
+---
+- name: Aplicar baseline em todos os servidores
+  hosts: all
+  become: true
+  roles:
+    - common

@@ -1,0 +1,22 @@
+---
+- name: Validar inventario
+  ansible.builtin.assert:
+    that:
+      - groups[k3s_server_group] | default([]) | length == 1
+    fail_msg: "Esta role suporta exatamente 1 server (grupo '{{ k3s_server_group }}')."
+  run_once: true
+
+- name: Preparar o host
+  ansible.builtin.include_tasks: prereqs.yml
+
+- name: Instalar k3s server
+  ansible.builtin.include_tasks: server.yml
+  when: inventory_hostname in groups[k3s_server_group]
+
+- name: Instalar k3s agent
+  ansible.builtin.include_tasks: agent.yml
+  when: inventory_hostname in groups[k3s_agent_group] | default([])
+
+- name: Verificar cluster
+  ansible.builtin.include_tasks: verify.yml
+  when: inventory_hostname == k3s_primary_server

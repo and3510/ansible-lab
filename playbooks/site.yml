@@ -1,0 +1,13 @@
+---
+# Provisiona o ambiente completo, na ordem de dependencia.
+- name: Baseline
+  ansible.builtin.import_playbook: common.yml
+
+- name: Docker
+  ansible.builtin.import_playbook: docker.yml
+
+- name: Servidores web
+  ansible.builtin.import_playbook: webservers.yml
+
+- name: Cluster k3s
+  ansible.builtin.import_playbook: k3s.yml

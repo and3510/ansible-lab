@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  author: and3510
+  description: Provisiona cluster k3s (1 server + N agents) com versao fixa e kubeconfig exportado
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [bookworm]
+dependencies: []

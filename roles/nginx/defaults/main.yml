@@ -1,0 +1,9 @@
+---
+nginx_site_name: app
+nginx_port: 80
+nginx_server_name: "{{ inventory_hostname }}"
+nginx_root: /var/www/{{ nginx_site_name }}
+nginx_remove_default_site: true
+
+# Se definido, o site vira proxy reverso para este upstream (ex.: http://127.0.0.1:8080)
+nginx_proxy_pass: ""

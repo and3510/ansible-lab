@@ -1,0 +1,16 @@
+# Ansible
+*.retry
+collections/
+artifacts/
+
+# Segredos: nunca versionar
+.vault_pass*
+*.pem
+*.key
+**/secrets.yml
+
+
+# Python
+.venv/
+venv/
+__pycache__/
