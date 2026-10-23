@@ -1,7 +1,5 @@
 # ansible-playbooks
 
-[![ci](https://github.com/and3510/ansible/actions/workflows/ci.yml/badge.svg)](https://github.com/and3510/ansible/actions/workflows/ci.yml)
-
 Infraestrutura como Código (IaC) com Ansible: roles reutilizáveis para provisionar servidores Linux, Docker e um cluster Kubernetes (k3s), testadas de ponta a ponta em um laboratório local com contêineres, sem precisar de VM.
 
 ## O que tem aqui
